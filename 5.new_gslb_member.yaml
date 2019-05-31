@@ -93,7 +93,7 @@
         pools: "[ { 'name': '{{ pool_name }}', 'priority': {{ pool_priority }}, 'algorithm': 'GSLB_ALGORITHM_ROUND_ROBIN', 'enabled': true, 'members': {{ members }} } ]"
 
     # print the pool object
-    - name: print obj beffore configuration
+    - name: print obj beffore configurations
       debug:
         msg: "{{ pools }}"
 
