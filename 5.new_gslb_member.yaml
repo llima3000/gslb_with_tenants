@@ -10,26 +10,25 @@
     aviusername: admin
     avipassword: "Avi123$%"
     aviapiversion: "18.2.3"
-
     tenant_name_admin: admin
-    # tenant name of the GSLB DNS VS
 
-    # 1rst part opf the fqdn
+    # 1rst part opf the fqdn - service name
     servicename: www2
-    # last part of fqdn
+    # last part of fqdn - domain name
     domainname: test.com
-    # tenant name of the GSLB DNS_VS and gslbservice
+    # tenant name where the GSLB DNS_VS and gslbservice gonna be configured
     tenant_gslb: demo-2
     
-    # GSLB group properties
-    # GSLB group prioroty
+    ### GSLB group properties
+    # GSLB group priority
     pool_priority: 10
     # GSLB group name
     pool_name: "group-{{ servicename }}-{{ pool_priority }}"
-    # GSLB Geolocation
+    # GSLB Geolocation algorith
     algorithm: GSLB_ALGORITHM_ROUND_ROBIN
     
-    # List of GSLB service group members -all avi VS
+    # List of GSLB service group members
+    # VS names, tenant names and IP address of the owner cluster of the VS
     vsmembergslb:
     # member 1
       # VS name
@@ -94,7 +93,7 @@
         pools: "[ { 'name': '{{ pool_name }}', 'priority': {{ pool_priority }}, 'algorithm': 'GSLB_ALGORITHM_ROUND_ROBIN', 'enabled': true, 'members': {{ members }} } ]"
 
     # print the pool object
-    - name: print obj
+    - name: print obj beffore configuration
       debug:
         msg: "{{ pools }}"
 
