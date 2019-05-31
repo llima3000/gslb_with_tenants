@@ -1,0 +1,120 @@
+#ansible-playbook configGSLB.yml -e "controller=10.10.29.250"
+---
+- hosts: localhost
+  gather_facts: no
+
+  connection: local
+  
+  vars_files:
+    - vars/main.yaml
+  
+  vars:
+    avi_credentials:
+      controller: "{{ avicontroller }}"
+      username: "{{ aviusername }}"
+      password: "{{ avipassword }}"
+      api_version: "{{ aviapiversion }}"
+
+  roles:
+    - role: avinetworks.avisdk
+  
+  tasks:
+
+    - name: Credentials
+      debug: 
+        msg: "{{ avi_credentials }}"
+
+    # Configure GSLB VS and site
+    - name: "Check if user {{ gslb_username }} exists on Avi"
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: user
+        params:
+          name: "{{ gslb_username }}"
+      register: user_exists
+
+#    - name: Existing User
+#      debug: msg="{{ user_exists }}"
+
+    - name: "If user {{ gslb_username }} doesn't exist create it on Avi"
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: post
+        path: user
+        data:
+          name: "{{ gslb_username }}"
+          username: "{{ gslb_username }}"
+          password: "{{ gslb_password }}"
+          access:
+            - all_tenants: true
+              role_ref: "/api/role?name=System-Admin"
+          user_profile_ref: "/api/useraccountprofile?name=No-Lockout-User-Account-Profile"
+      when: user_exists.obj.count == 0
+
+    - name: Get GSLB VS info "{{ app_name }} in {{ tenant_name }} tenant "
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name }}"
+        http_method: get
+        path: virtualservice
+        params:
+          name: "{{ app_name }}"
+      register: vs_info
+
+    #- name: vs uuid
+    #  debug: msg="{{ vs_info }}"
+
+    - name: Get main Cluster Information using avi_api_session
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: cluster
+      register: cluster_info
+
+    #- name: cluster_info['obj']
+    #  debug: msg:="{{ cluster_info['obj'] }}"
+      
+    #- name: gslb_leader_controller
+    #  debug: msg="{{ gslb_leader_controller }}"
+
+    - name: Create GSLB
+      avi_gslb:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        sites:
+        - enabled: true
+          port: 443
+          member_type: GSLB_ACTIVE_MEMBER
+          cluster_uuid: "{{ cluster_info['obj'].uuid }}"
+          ip_addresses:
+          - type: V4
+            addr: "{{ gslb_leader_controller }}"
+          dns_vses:
+                -
+                    dns_vs_uuid: "{{ vs_info['obj']['results'][0]['uuid'] }}"
+                    domain_names: "{{ gslb_dns_domain }}"
+          name: "{{ gslb_leader_sitename }}"
+          username: "{{ gslb_username }}"
+          password: "{{ gslb_password }}"
+        name: "GSLB"
+        dns_configs: "{{ dns_configs }}"
+        leader_cluster_uuid: "{{ cluster_info['obj'].uuid }}"

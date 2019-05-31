@@ -1,0 +1,88 @@
+#ansible-playbook -e "controller=10.10.29.250"
+---
+- hosts: localhost
+  gather_facts: no
+
+  connection: local
+  
+  vars:
+    avicontroller: "10.150.0.13"
+    avicontroller_target: "10.150.0.14"
+    aviusername: admin
+    avipassword: "Avi123$%"
+    aviapiversion: "18.2.3"
+
+    gslb_dns_domain: "test3.com"
+
+    cloud_name: OpenStack
+    tenant_name_admin: admin
+    tenant_name: demo
+
+    gslb_vip_name: DNSGSLB-Demo
+    avi_credentials:
+      #controller: "{{ avicontroller }}"
+      username: "{{ aviusername }}"
+      password: "{{ avipassword }}"
+      #api_version: "{{ aviapiversion }}"
+
+
+  roles:
+    - role: avinetworks.avisdk
+  
+  tasks:
+    - name: Get GSLB VS info
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller_target }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name }}"
+        http_method: get
+        path: virtualservice
+        params:
+          name: "{{ gslb_vip_name }}"
+      register: vs_info
+
+    - name: Get GSLB info from LEADER "
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: gslb
+      register: gslb_info
+
+    #- debug: msg="{{ gslb_info }}"
+
+    - name: Get main Cluster Information using avi_api_session
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: cluster
+      register: leader_cluster_info
+
+    - name: "UPDATE GSLB - Add VS {{ gslb_vip_name }} into {{ avicontroller_target }}"
+      avi_gslb:
+        controller: "{{ avicontroller }}"
+        username: "{{ aviusername }}"
+        avi_credentials: "{{ avi_credentials }}"
+        api_version: "18.2.3"
+        leader_cluster_uuid: "{{ leader_cluster_info['obj'].uuid }}"
+        avi_api_update_method: patch
+        avi_api_patch_op: replace
+        tenant: admin
+        name: "Default"
+        dns_configs:
+        - domain_name: "{{ gslb_dns_domain }}"
+        sites:
+        - ip_addr: "{{ avicontroller_target }}"
+          dns_vses:
+            - dns_vs_uuid: "{{ vs_info['obj']['results'][0]['uuid'] }}"
+              domain_names:
+                - "{{ gslb_dns_domain }}"

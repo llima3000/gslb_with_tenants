@@ -1,0 +1,112 @@
+---
+- hosts: localhost
+  gather_facts: no
+
+  connection: local
+  
+  vars:
+    avicontrollerleader: "10.150.0.13"
+    avicontrollerfollower: "10.150.0.14"
+    aviusername: admin
+    avipassword: "Avi123$%"
+    aviapiversion: "18.2.3"
+
+    tenant_name_admin: admin
+    # tenant name of the GSLB DNS VS
+
+    # 1rst part opf the fqdn
+    servicename: www2
+    # last part of fqdn
+    domainname: test.com
+    # tenant name of the GSLB DNS_VS and gslbservice
+    tenant_gslb: demo-2
+    
+    # GSLB group properties
+    # GSLB group prioroty
+    pool_priority: 10
+    # GSLB group name
+    pool_name: "group-{{ servicename }}-{{ pool_priority }}"
+    # GSLB Geolocation
+    algorithm: GSLB_ALGORITHM_ROUND_ROBIN
+    
+    # List of GSLB service group members -all avi VS
+    vsmembergslb:
+    # member 1
+      # VS name
+    - name: web-demo2 
+      # Tetant where VS is configured
+      tenant: demo-2 
+      # controllerIP
+      controller: "{{ avicontrollerleader }}" 
+    # member 2
+    - name: www-demo
+      tenant: demo
+      controller: "{{ avicontrollerleader }}"
+    # member 3
+    - name: web1-3rddifferent
+      tenant: 3rddiferent
+      controller: "{{ avicontrollerfollower }}"
+
+  roles:
+    - role: avinetworks.avisdk
+  
+  tasks:
+    # Get Cluster info data to populate group members of GSLB service
+    - name: Get Cluster Information for each VS
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ item.controller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: cluster
+      with_items: "{{ vsmembergslb }}"
+      register: cluster_info
+
+    # Get VS data to populate group members of GSLB service
+    - name: Get GSLB VS info for pool member
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ item.controller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ item.tenant }}"
+        http_method: get
+        path: virtualservice
+        params:
+          name: "{{ item.name }}"
+      with_items: "{{ vsmembergslb }}"
+      register: vs_poolmember_info
+
+    # Create pool members array
+    - name: pool members array
+      set_fact:
+        members: "{{ members | default([]) }} + [ { 'ratio': 1, 'cluster_uuid': '{{ item.1.obj.uuid }}',  'ip': {{ item.0.obj.results[0].vip[0].ip_address }}, 'vs_uuid': '{{ item.0.obj.results[0].uuid }}', 'enabled': true } ]"
+        #
+      with_together:
+      - "{{ vs_poolmember_info['results'] }}"
+      - "{{ cluster_info.results }}"
+
+    # Set the pool object for gslbservice
+    - name: set pool
+      set_fact:
+        pools: "[ { 'name': '{{ pool_name }}', 'priority': {{ pool_priority }}, 'algorithm': 'GSLB_ALGORITHM_ROUND_ROBIN', 'enabled': true, 'members': {{ members }} } ]"
+
+    # print the pool object
+    - name: print obj
+      debug:
+        msg: "{{ pools }}"
+
+    # create gslbservice        
+    - name: Configure GSLBService "{{ servicename }}"
+      avi_gslbservice:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontrollerleader }}"
+        api_version: "{{ aviapiversion }}"
+        name: "{{ servicename }}"
+        tenant: "{{ tenant_gslb }}"
+        domain_names:
+            - "{{ servicename }}.{{ domainname }}"        
+        groups: "{{ pools }}"

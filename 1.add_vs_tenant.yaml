@@ -1,0 +1,84 @@
+---
+- hosts: localhost
+  gather_facts: no
+
+  connection: local
+  
+  vars_files:
+    - vars/main.yaml
+
+  vars:
+    avi_credentials:
+      controller: "{{ avicontroller }}"
+      username: "{{ aviusername }}"
+      password: "{{ avipassword }}"
+      api_version: "{{ aviapiversion }}"
+
+  roles:
+    - role: avinetworks.avisdk
+  
+  tasks:
+    - name: Get cloud data
+      avi_api_session:
+        avi_credentials: "{{ avi_credentials }}"
+        tenant: "{{ tenant_name }}"
+        http_method: get
+        path: "cloud?name={{ cloud_name }}"
+      register: cloud_data
+    
+    - name: get networks
+      avi_api_session:
+        avi_credentials: "{{ avi_credentials }}"
+        tenant: "{{ tenant_name }}"
+        http_method: get
+        path: networksubnetlist
+        params:
+          include_name: true
+          sort: name
+          name: "{{ subnet_name }}"
+          auto_allocate_only: true
+          cloud_uuid: "{{ cloud_data.obj.results[0].uuid}}"
+      register: subnets
+
+    - name: Create VsVIP
+      avi_vsvip:
+        avi_credentials: "{{ avi_credentials }}"
+        tenant: "{{ tenant_name }}"
+        name: 'vsvip-{{ app_name }}-{{ cloud_name }}' 
+        cloud_ref: "/api/cloud?name={{ cloud_name }}"
+        vip:
+          - vip_id: '1'
+            enabled: true
+            network_uuid: "{{ subnets.obj.results[0].uuid }}"
+            subnet: 
+              mask: 24
+              ip_addr: 
+                type: "V4"
+                addr: "{{ vs_vip_addr }}"
+            auto_allocate_floating_ip: "{{ auto_allocate_floating_ip }}"
+            auto_allocate_ip: "{{ auto_allocate_ip }}"
+
+
+    - name: Create Virtual Service
+      avi_virtualservice:
+        avi_credentials: "{{ avi_credentials }}"
+        name: "{{ app_name }}"
+        tenant: '{{ tenant_name }}'
+        ign_pool_net_reach: true
+        #pool_ref: "/api/pool?name={{ pool_name }}"
+        cloud_ref: "/api/cloud?name={{ cloud_name }}"
+        cloud_type: "{{ vs_cloud_type }}"
+        type: "{{ vs_type }}"
+        #ssl_key_and_certificate_refs:
+        #  - '/api/sslkeyandcertificate?name={{ cert_name }}'
+        #ssl_profile_ref: '/api/sslprofile?name={{ ssl_profile }}'
+        #se_group_ref: '/api/serviceenginegroup?name={{ se_group_name }}'
+        #vrf_context_ref: '/api/vrfcontext?name=demo-default'
+        application_profile_ref: '/api/applicationprofile?name={{ application_profile }}'
+        network_profile_ref: '/api/networkprofile?name={{ network_profile }}'
+        traffic_enabled: "{{ vs_traffic_enabled | default('true') }}"
+        enabled: "{{ vs_enabled | default('true') }}"
+        services: "{{ vs_services }}"
+        analytics_policy: "{{ analytics_policy }}"
+        enable_autogw: "{{ enable_autogw | default('true') }}"
+        vsvip_ref: '/api/vsvip/?name=vsvip-{{ app_name }}-{{ cloud_name }}'

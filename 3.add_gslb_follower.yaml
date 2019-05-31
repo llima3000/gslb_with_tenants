@@ -1,0 +1,167 @@
+#ansible-playbook -e "controller=10.10.29.250"
+---
+- hosts: localhost
+  gather_facts: no
+
+  connection: local
+  
+  vars_files:
+    - vars/main.yaml
+
+  vars:
+    avi_credentials:
+      controller: "{{ avicontroller }}"
+      username: "{{ aviusername }}"
+      password: "{{ avipassword }}"
+      api_version: "{{ aviapiversion }}"
+
+  roles:
+    - role: avinetworks.avisdk
+  
+  tasks:
+    # Configure GSLB VS and site
+    - name: "Check if user {{ gslb_username }} exists on Avi"
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontrollerfollower }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: user
+        params:
+          name: "{{ gslb_username }}"
+      register: user_exists
+
+#    - name: Existing User
+#      debug: msg="{{ user_exists }}"
+    - name: "If user {{ gslb_username }} doesn't exist create it on Avi"
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontrollerfollower }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: post
+        path: user
+        data:
+          name: "{{ gslb_username }}"
+          username: "{{ gslb_username }}"
+          password: "{{ gslb_password }}"
+          access:
+            - all_tenants: true
+              role_ref: "/api/role?name=System-Admin"
+          user_profile_ref: "/api/useraccountprofile?name=No-Lockout-User-Account-Profile"
+      when: user_exists.obj.count == 0
+
+    - name: Get GSLB VS info "{{ app_name }} in {{ tenant_name }} tenant "
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontrollerfollower }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name }}"
+        http_method: get
+        path: virtualservice
+        params:
+          name: "{{ app_name }}"
+      register: vs_info
+
+    - name: Get GSLB info from LEADER "
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: gslb
+      register: gslb_info
+
+    - debug: msg="{{ gslb_info }}"
+
+    - name: Get main Cluster Information using avi_api_session
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontroller }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: cluster
+      register: leader_cluster_info
+
+    - name: Get follower Cluster Information using avi_api_session
+      avi_api_session:
+        username: "{{ aviusername }}"
+        password: "{{ avipassword }}"
+        controller: "{{ avicontrollerfollower }}"
+        api_version: "{{ aviapiversion }}"
+        tenant: "{{ tenant_name_admin }}"
+        http_method: get
+        path: cluster
+      register: follower_cluster_info
+
+    - name: UPDATE GSLB 1
+      avi_gslb:
+        username: "{{ username }}"
+        password: "{{ password }}"
+        controller: "{{ avicontroller }}"
+        api_version: 18.2.3
+        leader_cluster_uuid: "{{ leader_cluster_info['obj'].uuid }}"
+        avi_api_update_method: patch
+        avi_api_patch_op: add
+        name: "GSLB"
+        gslb_sites_config:
+        - enabled: True
+          ip_addresses:
+            - type: V4
+              addr: "{{ gslb_follower_controller }}"
+          name: "{{ gslb_follower_sitename }}"
+          username: "{{ gslb_username }}"
+          password: "{{ gslb_password }}"
+          member_type: "GSLB_ACTIVE_MEMBER"
+          port: 443
+          cluster_uuid: "{{ follower_cluster_info['obj'].uuid }}"
+          dns_vses:
+          - dns_vs_uuid: "{{ vs_info['obj']['results'][0]['uuid'] }}"
+            domain_names: "{{ gslb_dns_domain }}"
+
+        - enabled: true
+          ip_addresses:
+          - type: V4
+            addr: "{{ gslb_leader_controller }}"
+          port: 443
+          member_type: GSLB_ACTIVE_MEMBER
+          cluster_uuid: "{{ leader_cluster_info['obj'].uuid }}"
+          name: "{{ gslb_leader_sitename }}"
+          username: "{{ gslb_username }}"
+          password: "{{ gslb_password }}"
+
+    #- name: UPDATE GSLB
+    #  avi_gslb:
+    #    username: "{{ username }}"
+    #    password: "{{ password }}"
+    #    controller: "{{ avicontroller }}"
+    #    api_version: "{{ api_version }}"
+    #    leader_cluster_uuid: "{{ leader_cluster_info['obj'].uuid }}"
+    #    avi_api_update_method: patch
+    #    avi_api_patch_op: add
+    #    name: "GSLB"
+    #    gslb_sites_config:
+    #      - name: 
+    #        ip_addr: "{{ gslb_follower_controller }}"
+    #        dns_vses:
+    #          - dns_vs_uuid: "{{ vs_info['obj']['results'][0]['uuid'] }}"
+    #            domain_names: "{{ gslb_dns_domain }}"
+    #    dns_configs:
+    #    #- domain_name: "{{ gslb_dns_domain }}"
+    #    #third_party_sites:
+    #    #  - 
+    #    #    enabled: true
+    #    #    name: "{{ gslb_follower_sitename }}_outside"
+    #    #    hm_proxies:
+    #    #      - 
+    #    #        site_uuid: "{{ follower_cluster_info['obj'].uuid }}"
+
+

@@ -1,0 +1,130 @@
+avicontroller: "10.150.0.13"
+aviusername: admin
+avipassword: "Avi123$%"
+aviapiversion: "18.2.3"
+avicontrollerfollower: "10.150.0.14"
+
+gslb_leader_controller: "{{ avicontroller }}"
+gslb_leader_sitename: "Leader"
+gslb_follower_controller: "{{ avicontrollerfollower }}"
+gslb_follower_sitename: "Follower"
+
+gslb_dns_domain: 
+- "test.com"
+- "teste2.com"
+
+dns_configs:
+- domain_name: "{{ gslb_dns_domain[0] }}"
+- domain_name: "{{ gslb_dns_domain[1] }}"
+
+nodes:
+- { name: 'controller1' }
+#- { name: 'controller2' }
+#- { name: 'controller3' }
+
+os_project_name: avi
+os_username: avi
+os_password: midom2000
+os_ip: 192.168.0.3
+os_net_name: admin
+
+avi_image_name: avi-controller-18.2.3-9063
+avi_image_format: "qcow2"
+avi_image_filename: "../imgs/{{ avi_image_name }}.{{ avi_image_format }}"
+avi_image_interface: admin
+avi_image_containerfmt: bare
+flavor_name: "m1.avilarge1"
+key_name: "llima3000"
+security_group_name: "controllers"
+az: nova
+os_hypervisor: KVM
+os_region: RegionOne
+os_img_format: OS_IMG_FMT_AUTO
+role_map:
+- { avi_role: Tenant-Admin, os_role: admin }
+- { avi_role: Tenant-Admin, os_role: _member}
+
+keystone_url: "http://{{ os_ip }}:5000/v3"
+
+auth:
+  auth_url: "{{ keystone_url }}"
+  username: "{{ os_username }}"
+  password: "{{ os_password }}"
+  project_name: '{{ os_project_name }}'
+  domain_name: Default
+
+rules:
+- { port: 22, protocol: 'tcp'}
+- { port: 80, protocol: 'tcp'}
+- { port: 443, protocol: 'tcp'}
+- { port: 5054, protocol: 'tcp'}
+- { port: 8443, protocol: 'tcp'}
+- { port: 123, protocol: 'udp'}
+- { port: -1, protocol: 'icmp'}
+
+username: "admin"
+password: "Avi123$%"
+api_version: "18.1.5"
+old_password: "58NFaGDJm(PJH0G"
+
+gslb_username: gslbuser
+gslb_password: Gslb2019
+
+cloud_name: OpenStack
+tenant_name_admin: admin
+tenant_name: demo
+se_group_name: Default-Group
+#se_group_name: "{{ tenant_name }}-SEG"
+se_name_prefix: Avi_OS
+placement_mode: PLACEMENT_MODE_AUTO
+max_scaleout_per_vs: 4
+max_se_seg: 100
+max_vs_per_se: 100
+log_disksz: 10000
+instance_flavor: "m1.avismall"
+se_vs_placement: PLACEMENT_ALGO_PACKED
+hm_name: "System-HTTP"
+
+app_name: DNSGSLB-Demo
+pool_name: "{{ app_name }}_pool"
+subnet_name: private
+floating_subnet_name: public
+
+key: "cert.key"
+cert: "cert.crt"
+cert_name: cert
+key_passphrase: '123456'
+cert_type: SSL_CERTIFICATE_TYPE_VIRTUALSERVICE
+
+vs_vip_addr: "10.0.0.0"
+auto_allocate_floating_ip: true
+auto_allocate_ip: true
+
+vs_cloud_type: CLOUD_OPENSTACK
+vs_type: VS_TYPE_NORMAL
+ssl_profile: System-Standard
+application_profile: 'System-DNS'
+network_profile: 'System-TCP-Proxy'
+
+vs_services:
+- { port: 53 } 
+- { port: 53, override_network_profile_ref: "/api/networkprofile/?name=System-UDP-Fast-Path"}
+
+addresses:
+  - '10.0.0.7'
+  - '10.0.0.27'
+
+analytics_policy: {
+    udf_log_throttle: 10,
+    full_client_logs:
+        { duration: 30,
+          enabled: true,
+          throttle: 10 
+        },
+    metrics_realtime_update:
+        { duration: 30,
+         enabled: true 
+        },
+    significant_log_throttle: 10,
+    client_insights: ACTIVE,
+    all_headers: false }
